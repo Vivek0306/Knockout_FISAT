@@ -1,0 +1,43 @@
+{% extends "base.html" %}
+
+{% block title %}
+    Register
+{% endblock %}
+
+
+{% block main %}
+
+<div class="container-lg">
+    <div class="row justify-content-center">
+      <div class="col-3 text-center">
+        <h2 class="fw-bold">Register</h2>
+        <hr class="w-25 mx-auto text-dark" style="height:2px;" />
+      </div>
+    </div>
+    <div class="row justify-content-center">
+      <div class="col-sm-9 col-xl-8 text-center">
+        <p>If you are a looking to help others and are an active service provider, register yourself here</p>
+      </div>
+      <div style="width: 50%;">
+        <form action="/registerService" method="post">
+            <div class="mb-3">
+                <label for="inputUser" class="form-label lead">Username</label>
+                <input type="text" class="form-control" id="inputUser" aria-describedby="emailHelp" name="uname">
+            </div>
+            <div class="mb-3">
+                <label for="inputPassword" class="form-label lead">Password</label>
+                <input type="password" class="form-control" id="inputPassword" name="password">
+            </div>
+            {% if error %}
+                <span style="color: red;">{{ error }}</span><br>
+                <button type="submit" class="btn btn-primary">Register</button>
+            {% else %}
+                <button type="submit" class="btn btn-primary">Register</button>
+            {% endif %}
+          </form>
+      </div>
+    </div>
+  </div>
+
+
+{% endblock %}
