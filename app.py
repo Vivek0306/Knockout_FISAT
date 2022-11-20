@@ -1,8 +1,8 @@
-from flask import Flask, request, render_template, request, redirect, url_for, session, jsonify
+from flask import Flask, request, render_template, request, redirect, url_for, session, jsonify, Response
 from flask_session import Session
 from flask_sqlalchemy import SQLAlchemy
-from flask_simple_geoip import SimpleGeoIP
-from flask_googlemaps import GoogleMaps
+
+
 
 app = Flask(__name__)
 app.config['SQLALCHEMY_DATABASE_URI'] = 'sqlite:///data.sqlite'
@@ -14,12 +14,29 @@ app.config["SESSION_PERMANENT"] = False
 app.config["SESSION_TYPE"] = "filesystem"
 Session(app)
 
+
+
+
 #Database attributes
 class User(db.Model):
     id = db.Column(db.Integer, primary_key=True)
     uname = db.Column(db.String(50))
     password = db.Column(db.String(50))
     details = db.relationship('detailsuser', backref='user')
+    loc = db.relationship('userloc', backref='user')
+
+class userloc(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    lat = db.Column(db.String(50))
+    lng = db.Column(db.String(50))
+    user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
+
+
+class serviceloc(db.Model):
+    id = db.Column(db.Integer, primary_key=True)
+    lat = db.Column(db.String(50))
+    lng = db.Column(db.String(50))
+    service_id = db.Column(db.Integer, db.ForeignKey('service.id'))
 
 class detailsuser(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -30,6 +47,7 @@ class detailsuser(db.Model):
     publicid = db.Column(db.String(50))
     profession = db.Column(db.String(50))
     experience = db.Column(db.String(50))
+    status = db.Column(db.Boolean)
     user_id = db.Column(db.Integer, db.ForeignKey('user.id'))
 
 
@@ -38,6 +56,8 @@ class Service(db.Model):
     uname = db.Column(db.String(50))
     password = db.Column(db.String(50))
     details = db.relationship('detailsservice', backref='service')
+    loc = db.relationship('serviceloc', backref='service')
+
 
 class detailsservice(db.Model):
     id = db.Column(db.Integer, primary_key=True)
@@ -48,8 +68,11 @@ class detailsservice(db.Model):
     contact2 = db.Column(db.String(50))
     publicid = db.Column(db.String(50))
     profession = db.Column(db.String(50))
-    experience = db.Column(db.String(50))
+    field = db.Column(db.String(50))
+    status = db.Column(db.Boolean)
     service_id = db.Column(db.Integer, db.ForeignKey('service.id'))
+
+
 
 
 @app.route("/")
@@ -69,7 +92,7 @@ def registerUser():
                 new_user = User(uname=uname, password=password)
                 db.session.add(new_user)
                 db.session.commit()
-                return redirect("/")
+                return redirect("/loginUser")
             else:
                 error = "Please enter the username and password"
                 return render_template('registerUser.html', error=error)
@@ -94,7 +117,7 @@ def registerService():
                 new_user = Service(uname=uname, password=password)
                 db.session.add(new_user)
                 db.session.commit()
-                return redirect("/")
+                return redirect("/loginService")
             else:
                 error = "Please enter the username and password"
                 return render_template('registerService.html', error=error)
@@ -149,17 +172,49 @@ def loginService():
     return render_template('loginService.html')
 
 
+# Location functionalities
+@app.route("/getLoc", methods=["GET", "POST"])
+def getLoc():
+    if request.method == "POST":
+        user = User.query.filter_by(uname = session["uname"]).first()
+        lat=request.form.get("cord1")
+        lng=request.form.get("cord2")    
+        user_loc = userloc(lat=lat,lng=lng,user_id=user.id)
+        db.session.add(user_loc)
+        db.session.commit()
+    return Response(status = 204)
+
+@app.route("/getLoc1", methods=["GET", "POST"])
+def getLoc1():
+    if request.method == "POST":
+        user = Service.query.filter_by(uname = session["uname"]).first()
+        lat=request.form.get("cord1")
+        lng=request.form.get("cord2")    
+        user_loc = serviceloc(lat=lat,lng=lng,service_id=user.id)
+        db.session.add(user_loc)
+        db.session.commit()
+    return Response(status = 204)    
+    
+
 #Dashboard functionalities
 @app.route("/userDashboard")
 def userDashboard():
     user = User.query.filter_by(uname = session["uname"]).first()
     user_details = detailsuser.query.filter_by(user_id = user.id)
-    return render_template('userDashboard.html',user_details=user_details)
+    service_details = detailsservice.query.all()
+    countAmb = detailsservice.query.filter_by(profession="Ambulance").count()
+    countDoc = detailsservice.query.filter_by(profession="Doctor").count()
+    countDon = detailsservice.query.filter_by(profession="Blood Donor").count()
+    countPharm = detailsservice.query.filter_by(profession="Pharmacy").count()
+    return render_template('userDashboard.html',user_details=user_details, service_details=service_details,countAmb=countAmb,countDoc=countDoc,countDon=countDon,countPharm=countPharm)
 
 
 @app.route("/serviceDashboard")
 def serviceDashboard():
-    return render_template('userDashboard.html')
+    user_details = detailsuser.query.all()
+    user1 = Service.query.filter_by(uname = session["uname"]).first()
+    service_details = detailsservice.query.filter_by(service_id = user1.id)
+    return render_template('serviceDashboard.html', service_details=service_details, user_details = user_details)
 
 @app.route("/userDetails",  methods=["GET", "POST"])
 def userDetails():
@@ -172,12 +227,36 @@ def userDetails():
         profession = request.form.get("profession")
         experience = request.form.get("experience")
         user = User.query.filter_by(uname = session["uname"]).first()
-        user_details = detailsuser(firstName=firstName, lastName=lastName,email=email,contact=contact,publicid=publicid,profession=profession,experience=experience, user_id=user.id)
+        user_details = detailsuser(firstName=firstName, lastName=lastName,email=email,contact=contact,publicid=publicid,profession=profession,experience=experience, status=False, user_id=user.id)
         db.session.add(user_details)
         db.session.commit()
-
-        # elif Service.query.filter_by(uname = session["uname"]).first():
+        return redirect('/userDashboard')
     return render_template('userDetails.html')
+
+@app.route("/changeStatus")
+def changeStatus():
+    user = Service.query.filter_by(uname = session["uname"]).first()
+    service = detailsservice.query.filter_by(service_id = user.id).first()
+    service.status = not service.status
+    db.session.commit()
+
+    service_details = detailsservice.query.filter_by(service_id = user.id)
+    return render_template('serviceDashboard.html', service_details=service_details)
+
+@app.route("/changeStatus1")
+def changeStatus1():
+    user = User.query.filter_by(uname = session["uname"]).first()
+    user_pick = detailsuser.query.filter_by(user_id = user.id).first()
+    user_pick.status = not user_pick.status
+    db.session.commit()
+    service_details = detailsservice.query.all()
+    user_details = detailsuser.query.filter_by(user_id = user.id)
+    countAmb = detailsservice.query.filter_by(profession="Ambulance").count()
+    countDoc = detailsservice.query.filter_by(profession="Doctor").count()
+    countDon = detailsservice.query.filter_by(profession="Blood Donor").count()
+    countPharm = detailsservice.query.filter_by(profession="Pharmacy").count()
+    return render_template('userDashboard.html',user_details=user_details, service_details=service_details,countAmb=countAmb,countDoc=countDoc,countDon=countDon,countPharm=countPharm)
+    
 
 @app.route("/serviceDetails",  methods=["GET", "POST"])
 def serviceDetails():
@@ -189,12 +268,12 @@ def serviceDetails():
         contact2 = request.form.get("contact2")
         publicid = request.form.get("publicid")
         profession = request.form.get("profession")
-        experience = request.form.get("experience")
+        field = request.form.get("field")
         service = Service.query.filter_by(uname = session["uname"]).first()
-        user_details = detailsservice(firstName=firstName, lastName=lastName,email=email,contact1=contact1,contact2=contact2,publicid=publicid,profession=profession,experience=experience, user_id=service.id)
-        db.session.add(user_details)
+        service_details = detailsservice(firstName=firstName, lastName=lastName,email=email,contact1=contact1,contact2=contact2,publicid=publicid,profession=profession,field=field, status=True,service_id=service.id)
+        db.session.add(service_details)
         db.session.commit()
-
+        return redirect('/serviceDashboard')
         # elif Service.query.filter_by(uname = session["uname"]).first():
     return render_template('serviceDetails.html')
 
